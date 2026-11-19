@@ -88,12 +88,12 @@ class OpenAIResponsesLengthDetector:
 
 
 class AnthropicMaxTokensDetector:
-    """Anthropic ``stop_reason == "max_tokens"`` signal."""
+    """Anthropic ``stop_reason`` signal for output or context-window truncation."""
 
     name = "anthropic_max_tokens"
 
     def __init__(self, stop_reasons: list[str] | tuple[str, ...] | None = None) -> None:
-        configured = stop_reasons if stop_reasons is not None else ("max_tokens",)
+        configured = stop_reasons if stop_reasons is not None else ("max_tokens", "model_context_window_exceeded")
         self._stop_reasons: frozenset[str] = frozenset(r.lower() for r in configured)
 
     def detect(self, message: AIMessage) -> ModelLengthTermination | None:

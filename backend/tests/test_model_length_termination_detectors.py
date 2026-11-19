@@ -52,6 +52,20 @@ def test_anthropic_max_tokens_detector_matches_stop_reason():
     assert hit.reason_value == "max_tokens"
 
 
+def test_anthropic_max_tokens_detector_matches_context_window_exceeded():
+    hit = AnthropicMaxTokensDetector().detect(
+        AIMessage(
+            content="partial",
+            response_metadata={"stop_reason": "model_context_window_exceeded"},
+        )
+    )
+
+    assert hit is not None
+    assert hit.detector == "anthropic_max_tokens"
+    assert hit.reason_field == "stop_reason"
+    assert hit.reason_value == "model_context_window_exceeded"
+
+
 def test_default_detectors_cover_openai_anthropic_gemini_and_responses():
     names = [detector.name for detector in default_detectors()]
 
