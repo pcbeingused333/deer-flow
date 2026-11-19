@@ -223,3 +223,25 @@ async def test_reply_without_running_card_and_push_without_source_split_too(feis
     assert api.rejected == []
     assert "".join(api.cards[card_id] for _, card_id in api.replies) == answer
     assert "".join(text for _, text in api.created) == answer
+
+
+def _markdown_content(text: str) -> str:
+    return json.loads(FeishuChannel._build_card_content(text))["elements"][0]["content"]
+
+
+async def test_markdown_image_without_image_key_becomes_a_link():
+    # Feishu rejects the card (230099 / 11310) when a markdown image has no img_key.
+    text = "Chart:\n![Top 10](https://example.com/chart.png)\nDone"
+    assert _markdown_content(text) == "Chart:\n[Top 10](https://example.com/chart.png)\nDone"
+    assert _markdown_content("![](/mnt/user-data/outputs/a.png)") == "/mnt/user-data/outputs/a.png"
+
+
+async def test_markdown_image_downgrade_never_grows_text():
+    # Card text is budgeted before the downgrade, so it must not lengthen it.
+    for text in ("![](" + "u" * 200 + ")", "![a](" + "u" * 200 + ' "t")', "![]()"):
+        assert len(_markdown_content(text)) <= len(text)
+
+
+async def test_markdown_image_with_feishu_image_key_is_kept():
+    text = "![chart](img_v3_02abc)"
+    assert _markdown_content(text) == text

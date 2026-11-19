@@ -157,6 +157,26 @@ FEISHU_MAX_CARDS_PER_REPLY = 10
 _CARD_TRUNCATION_MARKER = "\n\n... (truncated)"
 _CARD_CONTINUES_MARKER = "\n\n…"
 _LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+# Feishu rejects a markdown element holding ``![alt](url)`` unless ``url`` is an
+# uploaded image key (``img_v...``): code 230099 / ErrCode 11310.
+_MARKDOWN_IMAGE = re.compile(r"!\[([^\]\n]*)\]\(\s*([^)\s]*)[^)\n]*\)")
+
+
+def _downgrade_markdown_images(text: str) -> str:
+    """Turn ``![alt](url)`` into a plain link unless ``url`` is a Feishu image key."""
+
+    def _replace(match: re.Match[str]) -> str:
+        alt, url = match.group(1), match.group(2)
+        if url.startswith("img_v"):
+            return match.group(0)
+        if not url:
+            return alt
+        # Never longer than the input: card text is budgeted before this runs.
+        return f"[{alt}]({url})" if alt else url
+
+    return _MARKDOWN_IMAGE.sub(_replace, text)
+
+
 # Characters JSON escapes, measured after the second escape: ``"`` is ``\\\"``.
 _ESCAPED_CARD_CHAR_BYTES = {'"': 4, "\\": 4, "\b": 3, "\f": 3, "\n": 3, "\r": 3, "\t": 3}
 
@@ -999,7 +1019,7 @@ class FeishuChannel(Channel):
         card = {
             "config": {"wide_screen_mode": True, "update_multi": True},
             # Unpaired surrogates cannot be encoded as UTF-8.
-            "elements": [{"tag": "markdown", "content": _LONE_SURROGATE.sub("\ufffd", text)}],
+            "elements": [{"tag": "markdown", "content": _downgrade_markdown_images(_LONE_SURROGATE.sub("\ufffd", text))}],
         }
         # ASCII escapes would make each CJK character 6 bytes instead of 3.
         return json.dumps(card, ensure_ascii=False)
