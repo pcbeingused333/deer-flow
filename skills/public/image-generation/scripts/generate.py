@@ -332,7 +332,7 @@ def _generate_image_gemini(
     if not bearer_value:
         return "GEMINI_API_KEY is not set"
     response = _post_image(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
         headers={"x-goog-api-key": bearer_value, "Content-Type": "application/json"},
         json={
             "generationConfig": {"imageConfig": {"aspectRatio": aspect_ratio}},

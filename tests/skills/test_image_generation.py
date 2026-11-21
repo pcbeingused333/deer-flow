@@ -727,3 +727,20 @@ def test_guess_mime_by_extension():
     assert img._guess_mime("/a/b.webp") == "image/webp"
     assert img._guess_mime("/a/b.jpg") == "image/jpeg"
     assert img._guess_mime("/a/b.unknown") == "image/jpeg"
+
+
+def test_gemini_request_uses_served_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    urls = []
+
+    def fake_post(url, **kwargs):
+        urls.append(url)
+        return FakeResp(
+            {"candidates": [{"content": {"parts": [{"inlineData": {"data": "aGk="}}]}}]}
+        )
+
+    monkeypatch.setattr(img.requests, "post", fake_post)
+    img._generate_image_gemini("a cat", [], str(tmp_path / "out.png"), "1:1")
+
+    assert "gemini-3-pro-image-preview" not in urls[0]
+    assert "/models/gemini-3-pro-image:generateContent" in urls[0]
