@@ -331,7 +331,7 @@ class SlackChannel(Channel):
             return None
         return hint
 
-    async def send_file(self, msg: OutboundMessage, attachment: ResolvedAttachment) -> bool:
+    async def send_file(self, msg: OutboundMessage, attachment: ResolvedAttachment, *, _max_retries: int = 3) -> bool:
         web_client = await self._get_web_client_for_message(msg)
         if not web_client:
             return False
@@ -346,7 +346,25 @@ class SlackChannel(Channel):
             if msg.thread_ts:
                 kwargs["thread_ts"] = msg.thread_ts
 
-            await asyncio.to_thread(web_client.files_upload_v2, **kwargs)
+            async def upload_file() -> Exception | None:
+                try:
+                    await asyncio.to_thread(web_client.files_upload_v2, **kwargs)
+                except Exception as exc:
+                    # Only a 429 is known to have been refused. After any other
+                    # error the file may already be shared, so do not resend it.
+                    if getattr(getattr(exc, "response", None), "status_code", None) == 429:
+                        raise
+                    return exc
+                return None
+
+            error = await self._send_with_retry(
+                upload_file,
+                max_retries=_max_retries,
+                log_prefix="[Slack]",
+                operation_name="file upload",
+            )
+            if error is not None:
+                raise error
             logger.info("[Slack] file uploaded: %s to channel=%s", attachment.filename, msg.chat_id)
             return True
         except Exception:

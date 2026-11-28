@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from slack_sdk.errors import SlackApiError
 
-from app.channels.message_bus import MessageBus, OutboundMessage
+from app.channels.message_bus import MessageBus, OutboundMessage, ResolvedAttachment
 from app.channels.slack import SLACK_MAX_OUTBOUND_RETRY_DELAY_SECONDS, SlackChannel
 
 
@@ -169,5 +169,46 @@ class TestSlackSendRetryAfter:
 
             assert sleeps == [15.0, 15.0]
             assert client.posts == []
+
+        _run(go())
+
+
+class TestSlackFileUploadRetryAfter:
+    @pytest.mark.parametrize(
+        ("error", "delivered", "waits"),
+        [
+            (_api_error(429, {"Retry-After": "12"}), True, [12.0]),
+            (_api_error(429, {"Retry-After": "120"}), False, []),
+            # The upload may have gone through: never send the file twice.
+            (ConnectionError("reset"), False, []),
+        ],
+    )
+    def test_upload_is_retried_only_when_rate_limited(self, monkeypatch, tmp_path, error, delivered, waits):
+        async def go():
+            channel, client = _channel()
+            sleeps = _patch_retry_sleep(monkeypatch)
+            pending = [error]
+            uploads: list[str] = []
+
+            def files_upload_v2(**kwargs):
+                if pending:
+                    raise pending.pop(0)
+                uploads.append(kwargs["filename"])
+
+            client.files_upload_v2 = files_upload_v2
+            path = tmp_path / "report.txt"
+            path.write_text("data")
+            attachment = ResolvedAttachment(
+                virtual_path="/mnt/user-data/outputs/report.txt",
+                actual_path=path,
+                filename="report.txt",
+                mime_type="text/plain",
+                size=4,
+                is_image=False,
+            )
+
+            assert await channel.send_file(_reply(), attachment) is delivered
+            assert sleeps == waits
+            assert uploads == (["report.txt"] if delivered else [])
 
         _run(go())
